@@ -1,0 +1,20 @@
+data {
+  dimY <- dim(use)
+}
+model {
+  
+  for (i in 1:dimY[1]) {
+    for (j in 1:dimY[2]) {
+      
+      use[i,j] ~ dbern(prob[i,j])
+     
+      logit(prob[i,j]) <- beta0 + betayear*yearscaled[j] + betafemale*femalecent[i]
+      
+    }
+
+  }
+  
+    beta0 ~ dt(0, 0.01, 1) 
+    betafemale ~ dt(0, 0.16, 1) 
+    betayear ~ dt(0, 0.16, 1)
+}
