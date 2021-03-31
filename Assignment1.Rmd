@@ -1,0 +1,323 @@
+---
+title: "Assignment 1"
+author: "Saurav Prem Kaushik Chetry"
+date: "September 9, 2019"
+output:
+  pdf_document: default
+  html_document: default
+netid: schetry2@illinois.edu
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+**Answer 1**  
+
+**Part a**  
+
+Letting,  
+  
+$\theta$ = movie reviews.  
+$n$ be the reviews received for each movie.  
+$y$ be the positive reviews for each movie.    
+   
+Therefore,  
+$n1$ = 200, $y1$ = 150, for movie 1.  
+$n2$ = 5, $y2$ = 4, for movie 2.  
+  
+The $p_i$ prior follows a uniform distribution $U \sim (0,1)$, the prior density $p(\theta)$ = 1.  
+  
+Likelihood for:  
+  
+movie1 = $p(y1|\theta) \propto \theta^{150}(1 - \theta)^{50}$.  
+movie2 = $p(y2|\theta) \propto \theta^{4}(1 - \theta)^{1}$.  
+  
+**Posterior Density**  
+  
+movie1, $p(\theta | y1) = p(\theta).p(y1 = 150|\theta)$.  
+$p(\theta|y1) \propto \theta^{150}(1 - \theta)^{50}$.  
+  
+movie2, $p(\theta|y2) = p(\theta).p(y2 = 4|\theta)$.  
+$p(\theta|y2) \propto \theta^{4}(1 - \theta)^{1}$.  
+  
+**Posterior Density Distribution**  
+  
+Therefore,  
+  
+**movie 1 follows $Beta(\alpha = 151, \beta = 51)$ distribution.**    
+**movie 2 follows $Beta(\alpha = 5, \beta = 2)$ distribution.**    
+  
+**Part b**  
+  
+|Movie                                     |         Movie1                      |            Movie2                |    higher ranked movie |
+|------------------------------------------|-------------------------------------|----------------------------------|------------------------|
+|$\alpha$                                  |         151                         |            5                     |                        |
+|$\beta$                                   |          51                         |            2                     |                        |
+|$mean = \alpha/(\alpha + \beta)$          |151/(151+51) = 151/202 = 0.7475      |5/(5+2) = 5/7 = 0.714             |        Movie 1         |
+|$mode = (\alpha - 1)/(\alpha + \beta - 2)$|(151 -1)/(151+51 -2) = 150/200 = 0.75|(5-1)/(5+2 - 2) = 4/5 = 0.80      |        Movie 2         |
+  
+Median calculation in R.  
+
+```{r}
+
+posterior.sample.movie1 = rbeta(1000,151,51) # 1000 independent samples
+(MedianMovie1 = median(posterior.sample.movie1))
+posterior.sample.movie2 = rbeta(1000,5,2) # 1000 independent samples
+(MedianMovie2 = median(posterior.sample.movie2))
+qbeta(0.5,151,51)
+qbeta(0.5,5,2)
+
+```
+  
+Therefore,  
+
+|Movie            |      Movie 1       |         Movie 2          |         Higher Rank           |
+|-----------------|--------------------|--------------------------|-------------------------------|
+|Mean             |      0.747         |         0.714            |         Movie 1               |
+|Mode             |      0.75          |         0.8              |         Movie 2               |
+|Median           |      0.748         |         0.727            |         Movie 1               |
+ 
+ 
+**Based on Mean and Median values, Movie 1 is ranked higher than Movie 2. Based on Mode values, however, Movie 2 is ranked higher than Movie 1. The Mode being the most likely value of the probability distribution, Movie 2 should be ranked higher amongst them** 
+    
+**Answer 2**   
+
+**Part a**  
+
+**(i)**  
+
+**reading the data file and plotting the histogram**
+  
+```{r}
+data = read.table("randomwikipedia.txt")
+summary(data)
+data
+hist(data$bytes)
+```
+    
+**The distribution is highly right skewed. Skewed distributions are not very useful for inferences. Data transformation to a different scale is required for deriving inferences from this dataset.**  
+  
+**(ii)**  
+  
+Log transformation of length. Generally log transformation results in a more suitable data set for making inferences.
+
+```{r}
+hist(log(data$bytes))
+```
+  
+**The distribution looks like a normal distribution but is not a perfectly normal. There appears to be a few many documents with length greater than 10 in the log scale. This spike does not make the distribution perfercty normal. But for this analysis, I think we can find the mean and variance for the majority of the articles, as they follow normal distribution(i.e. articles with length < 10 on the log scale).**   
+
+**(iii)**  
+  
+**The log transformation can be used to make highly skewed distributions less skewed. This can be valuable both for making patterns in the data more interpretable and for helping to meet the assumptions of inferential statistics. **  
+  
+  
+**Part (b)**  
+
+**Calculating the mean and variance from the distribution**
+
+```{r}
+nrow(data)
+mean(log(data$bytes))
+var(log(data$bytes))
+```
+  
+The *sample mean* of the log transformed article length is: <tt>`r mean(log(data$bytes))`</tt>.  
+The *sample variance* of the log transformed article length is: <tt>`r var(log(data$bytes))`</tt>.  
+
+**Part c**
+
+**A flar prior corresponds to a prior distribution which is proportional to a positive constant. From lectures, I will set the constant as 1 for the analysis below**
+
+$$\begin{aligned}
+p(y\vert\mu) &\propto \exp\left(-\frac{n}{2\sigma^2}(\mu-\bar{y})^2\right) \\
+p(\mu) &\propto 1 \\
+p(\mu\vert y) &\propto \exp\left(-\frac{n}{2\sigma^2}(\mu-\bar{y})^2\right) \\
+\mu\vert y &\sim \mathcal{N}(\bar{y}, \sigma^2/n)
+\end{aligned}$$
+
+```{r}
+n = nrow(data)
+ybar = mean(log(data$bytes)) #sample mean
+s.2 = var(log(data$bytes)) #sample variance
+ybar
+sigma.2 = s.2
+sigma.2/n
+n/sigma.2
+
+```
+**(i)**  
+
+** For a flat prior, the posterior distribution has a mean equal to sample mean; a variance equal to sample variance divided by the length of the dataset(n); and the precision is the inverse of the posterior variance**
+
+
+The posterior mean is:<tt>`r ybar`</tt>.  
+The posterior variance is:<tt>`r sigma.2/n`</tt>.    
+The posterior precision is:<tt>`r n/sigma.2`</tt>.  
+
+**(ii)**
+
+**With the derived posterior mean and posterior variance, the curve can be plotted as below. For the flat prior, I have chosen to use a horizontal line at value = 0.1, to show the flat nature or the prior. The curve of the posterior distribution does spike around the mean value of the distribution, whereas the prior is still non-informative around that value**
+
+```{r}
+curve(dnorm(mu,mean = ybar,sd = sqrt(sigma.2/n)),xlim = c(7.5,9.5), xname = "mu") #posterior
+abline(h = 0.1, lty = 2) #prior is proportional to a positive constant.
+legend("topright", c("prior","posterior"), lty=2:1)
+
+```
+
+**(iii)**
+
+**The 95% posterior interval is calculated using the posterior mean and posterior variance as below**
+
+```{r}
+lower = ybar - 1.96*sqrt(sigma.2/n)
+upper = ybar + 1.96*sqrt(sigma.2/n)
+posterior.interval = c(lower,upper)
+```
+  
+95% posterior interval of $\mu$: <tt>`r posterior.interval`</tt>
+   
+**Part d**  
+
+
+**(i)**  
+
+**For an unknown mean and variance, the posterior mean follows a normal distribution and the variance follows a Inverse Chi Squared distribution. Below I draw 1000 samples from the distribution to calculate the posterior mean, variance and precision. The simulation returns a vector of mean and variance values, The average of the vectors are used to find the posterior mean, variance and precision**
+
+```{r}
+post.sigma.2.sim.i = (n-1) * s.2 / rchisq(1000, n-1)
+post.mu.sim.i = rnorm(1000, ybar, sqrt(post.sigma.2.sim.i / n))
+
+mean(post.mu.sim.i) # taking the average from 1000 means
+mean(post.sigma.2.sim.i) # taking the average from 1000 varainces
+mean(1/post.sigma.2.sim.i) # taking the mean from 1000 precisions
+
+```
+
+The posterior mean is (avg of all post.mu.sim.i) :<tt>`r mean(post.mu.sim.i)`</tt>.  
+The posterior variance is (avg of all post.sigma.2.sim.i) :<tt>`r mean(post.sigma.2.sim.i)`</tt>.    
+The posterior precision is mean(avg of all 1/post.sigma.2.sim.i) :<tt>`r mean(1/post.sigma.2.sim.i)`</tt>.
+
+**(ii)**  
+
+**The 95% interval is simulated using the vector of simulated mean**  
+
+95% posterior interval of $\mu$: 
+
+```{r}
+quantile(post.mu.sim.i, c(0.025,0.975)) # 95% post. int. for mu
+
+
+```
+
+**(iii)**
+
+**The 95% interval is simulated using the vector of simulated variance**  
+
+95% posterior interval of $\sigma^2$:  
+
+```{r}
+quantile(post.sigma.2.sim.i, c(0.025,0.975)) # 95% post. int. for sigma.2
+
+```
+
+
+**Part e**
+
+**(i)**
+
+**Given prior has unknown mean and variance. I will perform 1 million draws both in a loop operation as well as without the loop operation. I will use the loop operation to increase the draws and keep the mean and variance same for each draw**
+
+$$p ( \mu , \sigma ^ { 2 } ) \propto ( \sigma ^ { 2 } ) ^ { - 1 } \quad, \sigma ^ { 2 } > 0$$
+```{r}
+post.sigma.2.sim.i.e = (n-1) * s.2 / rchisq(1000000, n-1)
+post.mu.sim.i.e = rnorm(1000000, ybar, sqrt(post.sigma.2.sim.i.e / n))
+
+#1 mil draws
+post.pred.sim.i.e = rnorm(1000000, post.mu.sim.i.e, sqrt(post.sigma.2.sim.i.e)) 
+
+# 95% post.pred.sim in original scale
+exp(quantile(post.pred.sim.i.e, c(0.025,0.975))) 
+
+#Another simulation to validate the above simulation for correctness. 
+#The below simulation is based on a for loop.
+
+set.seed(420)
+post.pred.sim.ei = rep(0,1000000) # variable initialized
+
+for(i in 1:1000000){    #1 mil iterations
+
+# unique post. variance for each iteration.
+post.sigma.2.sim.ei = (n-1) * s.2 / rchisq(1, n-1) 
+
+# unique post. mean for each iteration.
+post.mu.sim.ei = rnorm(1, ybar, sqrt(post.sigma.2.sim.ei / n)) 
+
+# new single draw using same variance and mean.
+post.pred.sim.ei[i] = rnorm(1, post.mu.sim.ei, sqrt(post.sigma.2.sim.ei)) 
+
+}
+
+# 95% post.pred.sim in original scale
+exp(quantile(post.pred.sim.ei, c(0.025,0.975))) 
+
+```
+
+**Both simulations derive similar intervals**
+
+**(ii)**
+
+**Longest article is having the maximum article length in the dataset. This is calculaed and stored in a new variable**
+
+```{r}
+longest.article = max(log(data$bytes))
+
+set.seed(420)
+post.pred.sim.eii = rep(0,1000000)
+
+#1 mil iterations
+for(i in 1:1000000){    
+
+# drawing unique post. variance for each iteration.  
+post.sigma.2.sim.eii = (n-1) * s.2 / rchisq(1, n-1) 
+
+# unique post. mean for each iteration.
+post.mu.sim.eii = rnorm(1, ybar, sqrt(post.sigma.2.sim.eii / n)) 
+
+# new single draw using same variance and mean.
+post.pred.sim.eii[i] = rnorm(1, post.mu.sim.eii, sqrt(post.sigma.2.sim.eii)) 
+
+}
+#calculating the probability
+mean(post.pred.sim.eii > longest.article)
+```
+
+`r mean(post.pred.sim.eii > longest.article)*100`$\%$ is the probablity of drawing an article longer than the longest article in the dataset.
+
+**(iii)**
+
+```{r}
+set.seed(420)
+post.pred.sim.eiii = rep(0,1000000)
+max.20 = rep(0,1000000) #variable to hold the max length from each set of 20 draws
+#1 mil iterations
+for(i in 1:1000000){    
+# drawing unique post. variance for each iteration.
+  post.sigma.2.sim.eiii = (n-1) * s.2 / rchisq(1, n-1) 
+
+# drawing unique post. mean for each iteration.
+post.mu.sim.eiii = rnorm(1, ybar, sqrt(post.sigma.2.sim.eiii / n)) 
+
+# 20 draws using same variance and mean.
+post.pred.sim.eiii = rnorm(20, post.mu.sim.eiii, sqrt(post.sigma.2.sim.eiii)) 
+
+# storing the max length among 20 draws from each iterations. results in a vector of 1 million length.
+max.20[i] = max(post.pred.sim.eiii) 
+}
+
+#calculating probability
+mean(max.20 > longest.article)
+```
+
+`r mean(max.20 > longest.article)*100`$\%$ is the probablity of drawing an article longer than the longest article in the dataset.

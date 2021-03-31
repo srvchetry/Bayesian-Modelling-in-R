@@ -1,0 +1,267 @@
+---
+title: "Assignment4"
+author: "Saurav Prem Kaushik Chetry"
+date: "October 20, 2019"
+output:
+  html_document: default
+  pdf_document: default
+netid: schetry2@illinois.edu
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 1, digits = 3)
+library(rjags)
+library(lattice)
+library(MASS)
+```
+
+**Part a**  
+**i**  
+
+Given,
+$T$ ~ $C*2^{A/2}$   
+
+Applying natural logarithm to the expression, we have:  
+
+log$T$ ~ log$C$ + log$2^{A/2}$   
+log$T$ ~ log$C$ + $A/2$log2  
+log$T$ ~ log$C$ + `r 0.5*log(2)`$A$  
+log$T$ ~ log$C$ + 0.347$A$  
+
+**logT follows a simple linear regression on A with an intercept logC and slope 0.347. The coefficient of A is 0.347**
+
+
+```{r}
+moore_data = read.csv("mooreslawdata.csv")
+plot(log(Transistors) ~ Year, data = moore_data)
+```
+
+The plot looks like a straight line. logT and Year have a positive linear relationship.
+
+**Part b**
+
+**i**  
+
+```{r, eval=FALSE}
+#mooreslawdata.bug
+model {
+for (i in 1:length(y)) {
+y[i] ~ dnorm(beta1 + beta2*year[i] - beta2*yearbar,sigmasqinv)
+}
+  
+beta1 ~ dnorm(0, 0.000001)
+beta2 ~ dnorm(0, 0.000001)
+sigmasqinv ~ dgamma(0.001, 0.001)
+
+sigmasq <- 1/sigmasqinv
+
+}
+
+```
+
+```{r}
+d1 = list(y = log(moore_data$Transistors),
+year = moore_data$Year,
+yearbar = mean(moore_data$Year))
+```
+
+```{r}
+inits = list(list(beta1= 1000, beta2= 1000, sigmasqinv= 0.1), #HHH
+             list(beta1= 1000, beta2= -1000, sigmasqinv= 0.1), #HLH
+             list(beta1= -1000, beta2= 1000, sigmasqinv= 0.000001), #LHL
+             list(beta1= 1000, beta2= -1000, sigmasqinv= 0.000001), #HLL
+             list(beta1= -1000, beta2= 1000, sigmasqinv= 0.1), #LHH
+             list(beta1= -1000, beta2= -1000, sigmasqinv= 0.1), #LLH
+             list(beta1= 1000, beta2= 1000, sigmasqinv= 0.000001), #HHL
+             list(beta1= -1000, beta2= -1000, sigmasqinv= 0.000001)) #LLL
+             
+             
+```
+
+```{r}
+moore_m1 = jags.model("mooreslawdata.bug", d1, inits, n.chains = 8, n.adapt = 1000)
+```
+```{r}
+update(moore_m1, 2500) # burn-in
+```
+
+```{r}
+moore_x1 <- coda.samples(moore_m1, c("beta1","beta2","sigmasq"),n.iter=2000)
+```
+
+**ii**
+
+```{r}
+summary(moore_x1)
+```
+
+**iii**  
+
+Approx. Posterior Mean of the Slope(beta2):  `r summary(moore_x1)[[1]][2,1]`
+
+95% posterior credible interval for Slope(beta2): (`r summary(moore_x1)[[2]][2,1]`, `r summary(moore_x1)[[2]][2,5]`)  
+
+** The interval contains the value determined in part a, i.e. 0.347 **
+
+**iv**  
+
+95% posterior credible interval for Intercept(beta1):  
+(`r summary(moore_x1)[[2]][1,1]`, `r summary(moore_x1)[[2]][1,5]`)
+
+
+**Part c**  
+
+**i**  
+```{r eval=FALSE}
+#mooreslawdata2.bug
+model {
+for (i in 1:length(y)) {
+
+y[i] ~ dnorm(beta1 + beta2*year[i] - beta2*yearbar,sigmasqinv)
+ytilde[i] ~ dnorm(beta1 + beta2*year[i] - beta2*yearbar,sigmasqinv)  
+}
+  
+beta1 ~ dnorm(0, 0.000001)
+beta2 ~ dnorm(0, 0.000001)
+sigmasqinv ~ dgamma(0.001, 0.001)
+
+sigmasq <- 1/sigmasqinv
+}
+```
+
+```{r}
+moore_m2 = jags.model("mooreslawdata2.bug", d1, inits, n.chains = 8, n.adapt = 1000)
+update(moore_m2, 2500) # burn-in
+moore_x2 <- coda.samples(moore_m2, c("beta1","beta2","sigmasq"),n.iter=2000)
+
+```
+```{r}
+summary(moore_x2)
+```
+
+**iii**  
+
+```{r}
+post.samp = as.matrix(moore_x2)
+Nsim = dim(post.samp)[1]
+post.pred.y.sim = rnorm(Nsim, post.samp[,"beta1"] + post.samp[,"beta2"]*(2020 - mean(moore_data$Year)), sqrt(post.samp[,"sigmasq"]))
+
+exp(quantile(post.pred.y.sim, c(0.025, 0.975)))
+
+# classical prediction
+mod1 = lm(log(Transistors) ~ Year, data = moore_data)
+exp(predict(mod1, data.frame(Year = 2020),interval="prediction"))[,c(2,3)]
+```
+
+**iv**  
+```{r}
+inv.year = mean(moore_data$Year) - post.samp[,"beta1"]/post.samp[,"beta2"]
+quantile(inv.year,c(0.025,0.975))
+
+```
+
+**For the first transistor invented, the model is same as an intercept only model and the above equation gives the year of the transistor invention.**
+
+**Part d**  
+**i**  
+
+```{r}
+post.samp1 = as.matrix(moore_x1)
+Nsim = dim(post.samp1)[1]
+error.sim = matrix(NA, Nsim, nrow(moore_data))
+for(s in 1:Nsim){
+  error.sim[s,] = log(moore_data$Transistors) - (post.samp1[s,"beta1"] + (moore_data$Year -  mean(moore_data$Year))*post.samp1[s, "beta2"])
+}
+```
+
+**ii**
+
+```{r}
+rep.y = matrix(NA, Nsim, nrow(moore_data))
+rep.error = matrix(NA, Nsim, nrow(moore_data))
+for(i in 1:Nsim){
+  rep.y[i,] = rnorm(nrow(moore_data), post.samp1[i,"beta1"] + (moore_data$Year - mean(moore_data$Year))*post.samp1[i, "beta2"], sqrt(post.samp1[i,"sigmasq"]))
+  rep.error[i,] = rep.y[i,]- (post.samp1[s,"beta1"] + (moore_data$Year -  mean(moore_data$Year))*post.samp1[s, "beta2"])
+}
+```
+
+**iii**  
+
+```{r}
+#test quantity 1
+Tyrepsim = apply(abs(rep.error/sqrt(post.samp1[,"sigmasq"])), 1, max)
+Tysim = apply(abs(error.sim/sqrt(post.samp1[,"sigmasq"])), 1, max)
+
+#test quantity 2
+Tyrepsim2 = abs(cor(t(rep.error), log(moore_data$Transistors)))
+Tysim2 = abs(cor(t(error.sim), log(moore_data$Transistors)))
+
+#test quantity 3
+Tyrepsim3 = abs(cor(t(rep.error), moore_data$Year))
+Tysim3 = abs(cor(t(error.sim), moore_data$Year))
+
+
+```
+
+**iv**  
+
+```{r}
+par(mfrow = c(1,3))
+plot(Tysim, Tyrepsim, pch=".", cex=1,
+ xlim=c(min(Tysim, Tyrepsim), max(Tysim, Tyrepsim)),
+ ylim=c(min(Tysim, Tyrepsim), max(Tysim, Tyrepsim)),
+ xlab="T(y,X, theta)", ylab="T(y-rep,X, theta)")
+ abline(a=0,b=1)
+ 
+ plot(Tysim2, Tyrepsim2, pch=".", cex=1,
+ xlim=c(min(Tysim2, Tyrepsim2), max(Tysim2, Tyrepsim2)),
+ ylim=c(min(Tysim2, Tyrepsim2), max(Tysim2, Tyrepsim2)),
+ xlab="T(y,X, theta)", ylab="T(y-rep,X, theta)")
+ abline(a=0,b=1)
+ 
+ plot(Tysim3, Tyrepsim3, pch=".", cex=1,
+ xlim=c(min(Tysim3, Tyrepsim3), max(Tysim3, Tyrepsim3)),
+ ylim=c(min(Tysim3, Tyrepsim3), max(Tysim3, Tyrepsim3)),
+ xlab="T(y,X, theta)", ylab="T(y-rep,X, theta)")
+ abline(a=0,b=1)
+```
+
+**v**  
+
+```{r}
+#test1
+ref.std.normal <- matrix(rnorm(Nsim*nrow(moore_data)), Nsim, nrow(moore_data))
+mean(apply(abs(ref.std.normal), 1, max) >= apply(abs(error.sim), 1, max))
+
+#test2
+mean(apply(abs(rep.error), 1, max) /
+ apply(abs(rep.error), 1, median) >=
+ apply(abs(error.sim), 1, max) /
+ apply(abs(error.sim), 1, median))
+
+#test3
+mean(apply(abs(rep.error), 1, max) >= apply(abs(error.sim), 1, max))
+
+```
+
+
+The p-value suggests the presence of outliers.  
+
+**vi**
+
+```{r}
+par(mfrow = c(2,2))
+plot(mod1)
+```
+
+
+**The most extreme outlier from the plots appears to be ARM 9TDMI. It has far less transistors for the year when it was introduced.**
+
+
+
+
+
+
+
+

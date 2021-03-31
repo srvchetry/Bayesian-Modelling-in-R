@@ -1,0 +1,265 @@
+---
+title: "Assignment3"
+author: "Saurav Prem Kaushik Chetry"
+date: "October 18, 2019"
+output:
+  pdf_document: default
+  html_document: default
+netid: schetry2@illinois.edu
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 1, digits = 3)
+library(rjags)
+library(lattice)
+```
+
+**Answer 1(a)**  
+```{r}
+source("FlintGibbs.R")
+
+```
+
+```{r}
+acf(mu.sim, plot = TRUE)
+
+```
+```{r}
+acf(sigma.2.sim, plot = TRUE)
+```
+
+**Answer 1(b)**  
+
+**Part (i)**
+
+```{r}
+set.seed(578)
+source("FlintMetropolis.R")
+
+mean(accept.prob)
+rho
+```
+
+**rho is 0.0313 for acceptance rate 0.35**
+
+**Part (ii)**
+
+```{r}
+acf(mu.sim, plot = TRUE)
+```
+
+```{r}
+acf(sigma.2.sim, plot = TRUE)
+
+```
+
+**Answer 1(c)**  
+
+The Gibbs method exhibits a faster mixing as the autocorrelations are (statistically) significantly different from zero upto lower lag values( around lag 1). Whereas in Metropolis method, the autocorrelations are (statistically) significantly different from zero upto higher lag values( around lag 10)  
+
+
+**Answer 2(a)**  
+
+**Part (i)**  
+```{r}
+d = read.table("polls2016.txt", header = TRUE)
+d$sigma = d$ME/2 # standard dev = half margin of error
+```
+
+```{r warning=FALSE}
+library(rjags) # automatically loads coda package
+initial.vals = list(list(mu= -100, tau= 0.01),
+                    list(mu= 100, tau=0.01),
+                    list(mu= -100, tau=100),
+                    list(mu= 100, tau= 100))
+
+m1 <- jags.model("polls20161.bug", d, initial.vals, n.chains=4, n.adapt=1000)
+
+```
+
+**Part (ii)**  
+
+```{r}
+update(m1, 2500) # burn-in
+```
+
+```{r}
+x1 <- coda.samples(m1, c("mu","tau"), n.iter=5000)
+```
+
+**Part (iii)**  
+
+```{r}
+plot(x1, smooth=FALSE, density = FALSE)
+```
+
+**Chains do not show any convergence problems after 5000 iterations**
+
+```{r}
+plot(x1, smooth=FALSE, trace = FALSE)
+```
+
+**Part (iv)**  
+
+```{r}
+gelman.diag(x1, autoburnin=FALSE)
+```
+```{r}
+gelman.plot(x1, autoburnin=FALSE)
+```
+
+**Gelman-Rubin statistics appear legitimately near 1. No convergence problems appear.**  
+
+
+**Part (v)**  
+
+```{r}
+autocorr.plot(x1[[4]])
+```
+
+**Some high autocorrelations are observed for mu, but essentially they become zero by lag 20. Similarly, some high autocorrelations are observed for tau, but essentially they become zero by lag 25**
+
+**Part (vi)**  
+
+```{r}
+effectiveSize(x1)
+```
+
+**Both mu,tau exceed the suggested minimum value of 400. The sample sizes are adequate**
+
+
+**Answer 2(b)**  
+
+**Part (i)** 
+
+```{r, eval=FALSE}
+
+model {
+
+  for (j in 1:length(y)) {
+    y[j] ~ dnorm(theta[j], 1/sigma[j]^2)
+    theta[j] ~ dnorm(mu, 1/tau^2)
+  }
+
+  mu ~ dunif(-1000,1000)
+  logtau ~ dunif(-100,100)
+
+  tau <- exp(logtau)
+
+}
+
+```
+
+
+**Part (ii)** 
+
+```{r warning=FALSE}
+library(rjags) # automatically loads coda package
+initial.vals2 = list(list(mu= -100, logtau= log(0.01)),
+                    list(mu= 100, logtau= log(0.01)),
+                    list(mu= -100, logtau= log(100)),
+                    list(mu= 100, logtau= log(100)))
+
+m2 <- jags.model("polls20161_new.bug", d, initial.vals2, n.chains=4, n.adapt=1000)
+```
+
+**Part (iii)**  
+
+```{r}
+update(m2, 2500) # burn-in
+x2 <- coda.samples(m2, c("mu","tau"), n.iter=5000)
+```
+
+**part (iv)**  
+
+```{r}
+plot(x2, smooth=FALSE, density = FALSE)
+
+```
+
+
+**Chains are far from convergence, even after 5000 iterations.**   
+
+
+```{r}
+plot(x2, smooth=FALSE, trace = FALSE)
+```
+
+**Part (v)**  
+
+```{r}
+gelman.diag(x2, autoburnin=FALSE)
+gelman.plot(x2, autoburnin=FALSE)
+
+```
+
+**Gelman-Rubin statistics do not appear to be close to 1. This indicates problems with convergence.**  
+
+**Part (vi)**  
+
+```{r}
+set.seed(578)
+autocorr.plot(x2[[3]])
+autocorr.diag(x2[[1]])
+autocorr.diag(x2[[2]])
+autocorr.diag(x2[[3]])
+autocorr.diag(x2[[4]])
+
+```
+
+**High autocorrelation for all the chains is observed. They chains do not appear to converge. The mixing speed is slow for both mu and tau for all chains.**  
+
+**Part (vii)**  
+**In part vi, there was a fundamental problem of using an almost flat prior, which results in an imporper posterior. In the following analysis,an improper flat prior on log$\tau$ is used.**  
+
+New Jag model:  
+
+```{r, eval=FALSE}
+
+model {
+
+  for (j in 1:length(y)) {
+    y[j] ~ dnorm(theta[j], 1/sigma[j]^2)
+    theta[j] ~ dnorm(mu, 1/tau^2)
+  }
+
+  mu ~ dunif(-1000,1000)
+  logtau ~ dexp(0.0001) 
+  
+  tau <- exp(logtau)
+
+}
+
+```
+
+
+```{r warning=FALSE}
+library(rjags) # automatically loads coda package
+initial.vals3 = list(list(mu= -100, logtau= 0.01),
+                    list(mu= 100, logtau= 0.01),
+                    list(mu= -100, logtau= 100),
+                    list(mu= 100, logtau= 100))
+
+
+m3 <- jags.model("polls20161_new2.bug", d, initial.vals3, n.chains=4, n.adapt=1000)
+
+update(m3, 2500) # burn-in
+x3 <- coda.samples(m3, c("mu","tau"), n.iter=5000)
+
+plot(x3, smooth=FALSE, density = FALSE)
+effectiveSize(x3)
+
+autocorr.plot(x3[[1]])
+densityplot(x3[,c("mu","tau")])
+
+
+```
+```{r}
+gelman.diag(x3, autoburnin=FALSE)
+gelman.plot(x3, autoburnin=FALSE)
+```
+
+**With an improper flat prior on log$\tau$, there is no convergence problem. High autocorrelations become zero with a faster mixing speed.**
+
+

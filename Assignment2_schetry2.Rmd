@@ -1,0 +1,286 @@
+---
+title: "Assignment 2"
+author: "Saurav Prem Kaushik Chetry"
+date: "September 23, 2019"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+net-id: schetry2@illinois.edu
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 1, digits = 3)
+library(rjags)
+library(lattice)
+```
+
+**Answer 1**
+
+**Part a**  
+**(i)**  
+
+Given,
+
+First prior formulation:
+$$
+\theta _ { j } | \alpha , \beta \sim \operatorname { Beta } ( \alpha , \beta )\\
+\alpha , \beta \sim \text { indep. Expon } ( 0.001 )
+$$
+```{r}
+set.seed(578)
+alpha  = rexp(1000, rate = 0.001)
+beta = rexp(1000, rate = 0.001)
+plot(log(alpha), log(beta))
+```
+
+**rexp is the function for random number generator for exponential distribution. 1000 pairs of alpha and beta are simulated from their hyperprior**
+
+**(ii)**
+```{r}
+set.seed(578)
+theta.j = rbeta(1000,alpha,beta)
+hist(theta.j, ylim = c(0,130))
+```
+
+**Part b**  
+**(i)**  
+
+Given,  
+Second Prior formulation:  
+
+$$
+\theta _ { j } | \alpha , \beta \sim \operatorname { Beta } ( \alpha , \beta )\\\alpha = \phi _ { 1 } / \phi _ { 2 } ^ { 2 } \quad \beta = ( 1 - \phi _ { 1 } ) / \phi _ { 2 } ^ { 2 }\\\phi _ { 1 } \sim U ( 0,1 ) \quad \phi _ { 2 } \sim U ( 0,1000 )
+$$
+
+```{r}
+set.seed(578)
+phi1 = runif(1000,0,1)
+phi2 = runif(1000,0,1000)
+alpha2 = phi1/phi2^2
+beta2 = (1 - phi1)/phi2^2
+plot(log(alpha2),log(beta2))
+```
+
+
+**(ii)**
+```{r}
+
+set.seed(578)
+theta2.j = rbeta(1000,alpha2,beta2)
+hist(theta2.j, ylim = c(0,750))
+
+```
+
+**Between the two hyperpriors, the second is less sensitive(to changes in hyperprior distributions) in terms of deriving the inference from its posterior distribution. The first hyperprior is more sensitive and therefore would not be recommended**
+
+**Answer 2**
+
+Given,
+
+$$
+\hat { \psi } _ { j } | \psi _ { j } \sim \text { indep. } N ( \psi _ { j } , \sigma _ { j } ^ { 2 } ) \quad j = 1 , \ldots , 12\\
+\psi _ { j } | \psi _ { 0 } , \sigma _ { 0 } \sim \operatorname { iid } N ( \psi _ { 0 } , \sigma _ { 0 } ^ { 2 } ) \quad j = 1 , \ldots , 12\\
+\left. \begin{array} { l } { \psi _ { 0 } \sim N ( 0,1000 ^ { 2 } ) } \\ { \sigma _ { 0 } \sim U ( 0,1000 ) } \end{array} \right.
+$$
+
+**Part a**  
+
+The hyperparametes are $\psi_0$ and $\sigma_0$. Their improper densities are descibed below:    
+
+$\psi_0$ has a **normal distribution with  
+mean:$\mu$ = 0  
+standard deviation $\sqrt \sigma ^ {2}$ = 1000.**  
+
+$\psi_0$ has a probability density = $\frac { 1 } { \sqrt { 2 \pi } \sigma } \operatorname { exp } ( - \frac { 1 } { 2 \sigma ^ { 2 } } ( \theta - \mu ) ^ { 2 } )$
+
+$\sigma_0$ has a **uniform distribution with boundaries 0 and 1000.**   
+$\sigma_0$ has a probability density function = $\frac { 1 } { 1000 - 0 }$ = 0.001, $\sigma_0 \in [ 0,1000 ]$  
+mean = (0 + 1000)/2 = 500  
+variance = (1000 - 0)^2/12 = 83333.33  
+
+
+**Part b**
+
+```{r fig.cap="DAG Part b",out.width = '100%'}
+knitr::include_graphics("DAG1.jpg")
+``` 
+
+**
+The parameters $\sigma$,$\psi$,$\hat\psi$ are vectors of length 12, they are present in the plate.  
+The $\sigma$ values are fixed and known. The node is not circled or shaded. 
+The $\hat\psi$ values are observed and the node is shaded.  
+**
+
+
+**Part c**  
+
+JAGS Model: asgn2template.bug 
+```{r, eval = FALSE}
+model {
+  for (j in 1:12) {
+    psihat[j] ~ dnorm(psi[j],1/sigma[j]^2)
+    psi[j] ~ dnorm(psi0,1/sigmasq0)
+  }
+
+  psi0 ~ dnorm(0,1/1000^2)
+  sigma0 ~ dunif(0,1000)
+
+  sigmasq0 <- sigma0^2
+}
+```
+
+**Part d**
+
+```{r}
+d = read.table("thenumbers.txt", header = TRUE)
+d
+summary(d)
+```
+
+```{r}
+set.seed(578)
+m <- jags.model("asgn2template.bug", d)
+```
+```{r}
+set.seed(578)
+update(m, 10000) # burn-in
+```
+```{r}
+set.seed(578)
+x <- coda.samples(m, c("psi0","sigmasq0"), n.iter=100000)
+```
+```{r}
+head(x)
+```
+```{r}
+head(as.matrix(x))
+```
+
+**The posterior numerical summary is given below:  **
+
+```{r}
+summary(x)
+```
+
+**Approximations from the above summary:**  
+
+Posterior expected values $\psi_0$ :`r summary(x)[[1]][1,1]`      
+Posterior expected values $\sigma_0^2$ :`r summary(x)[[1]][1,2]`    
+Posterior standard deviation $\psi_0$ :`r summary(x)[[1]][2,1]`  
+Posterior standard deviation $\sigma_0^2$ :`r summary(x)[[1]][2,2]`  
+95% central posterior intervals:   
+
+                
+$\psi_0$: (`r summary(x)[[2]][1,1]`, `r summary(x)[[2]][1,5]`)          
+$\sigma_0^2$: (`r summary(x)[[2]][2,1]`, `r summary(x)[[2]][2,5]`)   
+
+
+**The graphical estimates of posterior densitities is given below:**
+
+```{r}
+densityplot(x)
+```
+
+**The summary and density plot for $\psi_0$ show posteriors close to what its hyperprior distribution indicated **  
+
+
+**Part e**  
+**(i)**
+
+**The new psihat and psi are represented as scalars psihat.tilde and psi.tilde. They are not in the plate. The new log odd standard error, sigma.tilde is a constant and known = 0.25**
+
+```{r fig.cap="DAG Part e", out.width = '100%'}
+knitr::include_graphics("DAG2.jpg")
+```
+
+**(ii)**  
+
+Modified JAG: asgn2template2.bug  
+```{r, eval= FALSE}
+
+model {
+  for (j in 1:12) {
+    psihat[j] ~ dnorm(psi[j],1/sigma[j]^2)
+    psi[j] ~ dnorm(psi0,1/sigmasq0)
+  }
+
+  psi0 ~ dnorm(0,1/1000^2)
+  sigma0 ~ dunif(0,1000)
+
+  sigmasq0 <- sigma0^2  
+  
+  psihat.tilde ~ dnorm(psi.tilde, 1/sigma.tilde^2)
+  psi.tilde ~ dnorm(psi0,1/sigmasq0) 
+
+}
+
+```
+
+**(iii)**  
+
+```{r}
+m2 = jags.model("asgn2template2.bug", c(as.list(d), sigma.tilde = 0.25))
+```
+
+```{r}
+update(m2, 10000) # burn-in
+```
+
+```{r}
+x2 <- coda.samples(m2, c("psihat.tilde"), n.iter=100000)
+```
+
+```{r}
+summary(x2)
+```
+
+
+Posterior mean of psihat.tilde = `r summary(x2)[[1]][1]`  
+Posterior sd of psihat.tilde = `r summary(x2)[[1]][2]`  
+Approximate 95% posterior predictive interval for psihat.tilde: 
+(`r summary(x2)[[2]][1]`,`r summary(x2)[[2]][5]`)  
+
+**(iv)**  
+
+New JAG Model with indicator: asgn2template3.bug  
+```{r,eval= FALSE}
+model {
+  for (j in 1:12) {
+    psihat[j] ~ dnorm(psi[j],1/sigma[j]^2)
+    psi[j] ~ dnorm(psi0,1/sigmasq0)
+  }
+
+  psi0 ~ dnorm(0,1/1000^2)
+  sigma0 ~ dunif(0,1000)
+
+  sigmasq0 <- sigma0^2  
+  
+  psihat.tilde ~ dnorm(psi.tilde, 1/sigma.tilde^2)
+  psi.tilde ~ dnorm(psi0,1/sigmasq0) 
+  
+  lead.ind <- psihat.tilde > 2*sigma.tilde
+
+}
+
+```
+```{r}
+m3 = jags.model("asgn2template3.bug", c(as.list(d), sigma.tilde = 0.25))
+```
+
+```{r}
+update(m3, 10000) # burn-in
+```
+
+```{r}
+x3 <- coda.samples(m3, c("psihat.tilde","lead.ind"), n.iter=100000)
+```
+
+```{r}
+summary(x3)
+```
+
+**The posterior predictive probability that the new estimated log-odds ratio will be at least twice its standard error is: `r summary(x3)[[1]][1,1]`**  
+
+

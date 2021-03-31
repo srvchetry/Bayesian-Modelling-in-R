@@ -1,0 +1,383 @@
+---
+title: "Assignment6"
+author: "Saurav Prem Kaushik Chetry"
+date: "November 30, 2019"
+output:
+  html_document: default
+  pdf_document: default
+netid: schetry2@illinois.edu
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 1, digits = 3)
+library(rjags)
+library(lattice)
+library(MASS)
+library(knitr)
+```
+
+**Solution 1**  
+
+```{r}
+illini = read.csv("illinimensbb.csv")
+head(illini)
+plot(Ht~Pos, data = illini)
+levels(illini$Pos)
+unclass(illini$Pos)
+```
+    
+  The players at center(C) positions had the largest heights. The median height was about 84.   
+  The players at the forward(F) positions had the average heights. The median height was about 78.  
+  The players at the guard(G) positions had the smallest heights.The median height was about 75.  
+  The different field positions seem to prefer players with different heights.  
+  
+**Solution 2**  
+  
+**Part a**  
+  
+```{r eval=FALSE}
+
+model {
+for (i in 1:length(fgm)) {
+fgm[i] ~ dbin(prob[i], fga[i])
+logit(prob[i]) <- betapos[pos[i]] + betaht*htscaled[i]
+
+fgmrep[i] ~ dbin(prob[i], fga[i])
+}
+  
+for (j in 1:max(pos)) {
+betapos[j] ~ dt(0, 0.01, 1)
+}
+betaht ~ dt(0, 0.16, 1)
+}
+
+```
+
+```{r}
+d1 <- list( fgm = illini$FGM,
+            fga = illini$FGA,
+            pos = unclass(illini$Pos),
+            htscaled = as.vector(scale(illini$Ht, scale=2*sd(illini$Ht))))
+
+```
+ 
+```{r}
+inits1 <- list(list(betapos=c(10,10,10), betaht=10),
+               list(betapos=c(10,10,-10), betaht=-10),
+               list(betapos=c(10,-10,10), betaht=-10),
+               list(betapos=c(10,-10,-10), betaht=10))
+```
+
+```{r}
+m1 <- jags.model("illini1.bug", d1, inits1, n.chains=4, n.adapt=1000)
+```
+  
+  
+```{r}
+update(m1, 1000) # burn-in
+```
+
+```{r}
+x1 <- coda.samples(m1, c("betapos","betaht"), n.iter=8000)
+```
+
+```{r}
+gelman.diag(x1, autoburnin=FALSE)
+```
+
+```{r}
+effectiveSize(x1)
+```
+
+**Part b**  
+
+```{r}
+summary(x1)
+```
+
+**Part c**  
+
+```{r}
+post.samp1 = as.matrix(x1)
+betaht = post.samp1[,1]
+betaposC = post.samp1[,2]
+betaposF = post.samp1[,3]
+betaposG = post.samp1[,4]
+
+par(mfrow =c (1,3))
+plot(betaht,betaposC)
+plot(betaht,betaposF)
+plot(betaht,betaposG)
+
+
+```
+
+**The scatterplots indicate linear relationship between the regression parametes. This indicates posterior correlations.**  
+
+**Part d**  
+
+```{r}
+
+x1 <- coda.samples(m1, c("betapos","betaht","prob","fgmrep"),n.iter=2000)
+probs <- as.matrix(x1)[, paste("prob[",1:nrow(illini),"]", sep="")]
+hist(probs[,11], freq = FALSE)
+```
+
+**Part e** 
+```{r}
+mean(post.samp1[,"betapos[2]"] > post.samp1[,"betapos[3]"])
+
+```
+```{r}
+mean(post.samp1[,"betapos[3]"] > post.samp1[,"betapos[2]"])
+```
+
+Bayes Factor:
+
+```{r}
+mean(post.samp1[,"betapos[2]"] > post.samp1[,"betapos[3]"])/mean(post.samp1[,"betapos[3]"] > post.samp1[,"betapos[2]"])
+```
+
+Data Evidence for $\beta_F$>$\beta_G$ vs. $\beta_G$>$\beta_F$ is: Strong
+
+**Part f**  
+
+```{r}
+fgmrep <- as.matrix(x1)[, paste("fgmrep[",1:nrow(illini),"]", sep="")]
+Tchi <- numeric(nrow(fgmrep))
+Tchirep <- numeric(nrow(fgmrep))
+for(s in 1:nrow(fgmrep)){
+ Tchi[s] <- sum((illini$FGM - illini$FGA*probs[s,])^2 /
+ (illini$FGA*probs[s,]*(1-probs[s,])))
+ Tchirep[s] <- sum((fgmrep[s,] - illini$FGA*probs[s,])^2 /
+ (illini$FGA*probs[s,]*(1-probs[s,])))
+ }
+```
+
+
+```{r}
+mean(Tchirep >= Tchi)
+```
+
+**Quite substantial evidence of a problem, probably overdispersion. We need a better model that takes account of this**  
+
+**Part g**   
+
+**i**  
+**New JAGS to allow for overdispersion:**  
+```{r eval= FALSE}
+model {
+for (i in 1:length(fgm)) {
+fgm[i] ~ dbin(prob[i], fga[i])
+logit(prob[i]) <- betapos[pos[i]] + betaht*htscaled[i] + epsilon[i]
+
+epsilon[i] ~ dnorm(0,1/sigmaepsilon^2)
+fgmrep[i] ~ dbin(prob[i], fga[i])
+}
+  
+for (j in 1:max(pos)) {
+betapos[j] ~ dt(0, 0.01, 1)
+}
+betaht ~ dt(0, 0.16, 1)
+
+sigmaepsilon ~ dunif(0,10)
+}
+```
+
+```{r}
+inits2 <- list(list(betapos=c(10,10,10), betaht=10, sigmaepsilon=0.01),
+               list(betapos=c(10,10,-10), betaht=-10, sigmaepsilon=9),
+               list(betapos=c(10,-10,10), betaht=-10, sigmaepsilon=0.01),
+               list(betapos=c(10,-10,-10), betaht=10, sigmaepsilon=9))
+
+```
+
+```{r}
+m2 <- jags.model("illini2.bug", d1, inits2, n.chains=4, n.adapt=1000)
+```
+
+```{r}
+update(m2, 8000) # burn-in
+```
+
+```{r}
+x2 <- coda.samples(m2, c("betapos","betaht","sigmaepsilon"), n.iter=50000)
+```
+
+```{r}
+gelman.diag(x2, autoburnin=FALSE)
+```
+
+```{r}
+effectiveSize(x2[,c("betapos[1]","betapos[2]","betapos[3]","betaht","sigmaepsilon")])
+```
+
+**ii**  
+
+```{r}
+post.samp2 = as.matrix(x2)
+hist(post.samp2[,5], freq = FALSE)
+```
+
+**iii(Repeat of Part 2.e)**  
+
+```{r}
+mean(post.samp2[,"betapos[2]"] > post.samp2[,"betapos[3]"])
+
+```
+
+```{r}
+mean(post.samp2[,"betapos[3]"] > post.samp2[,"betapos[2]"])
+```
+
+Bayes Factor:
+
+```{r}
+mean(post.samp2[,"betapos[2]"] > post.samp2[,"betapos[3]"])/mean(post.samp2[,"betapos[3]"] > post.samp2[,"betapos[2]"])
+```
+
+Data Evidence for $\beta_F$>$\beta_G$ vs. $\beta_G$>$\beta_F$ is: Positive to Barely Mentionable. Previously the data evidence was Strong
+
+
+**Solution 3**
+
+**Part a**  
+
+```{r, eval = FALSE}
+model {
+  for (i in 1:length(blk)) {
+    blk[i] ~ dpois(lambda[i])
+    log(lambda[i]) <- log(t[i]) + betapos2[pos2[i]] + betaht2*htscaled2[i]
+    
+    blkrep[i] ~ dpois(lambda[i])
+  }
+  
+  for (j in 1:max(pos2)) {
+    betapos2[j] ~ dnorm(0, 0.0001)
+  }
+  betaht2 ~ dnorm(0, 0.0001)
+}
+  
+
+```
+
+```{r}
+d3 <- list( blk = illini$BLK,
+            t = illini$MIN,
+            pos2 = unclass(illini$Pos),
+            htscaled2 = as.vector(scale(illini$Ht)))
+```
+
+```{r}
+inits3 <- list(list(betapos2=c(90,90,90), betaht2=90),
+               list(betapos2=c(90,90,0.01), betaht2=0.01),
+               list(betapos2=c(90,0.01,90), betaht2=0.01),
+               list(betapos2=c(90,0.01,0.01), betaht2=90))
+
+```
+
+```{r}
+m3 <- jags.model("illini3.bug", d3, inits3, n.chains=4, n.adapt=1000)
+```
+
+```{r}
+update(m3, 2000) # burn-in
+```
+
+```{r}
+x3 <- coda.samples(m3, c("betapos2","betaht2"), n.iter=20000)
+```
+
+```{r}
+gelman.diag(x3, autoburnin=FALSE)
+```
+```{r}
+effectiveSize(x3[,c("betapos2[1]","betapos2[2]","betapos2[3]","betaht2")])    
+```
+
+**Part b**  
+
+```{r}
+(sm3 = summary(x3))
+```
+
+```{r}
+x3_1 <- coda.samples(m3, c("betapos2","betaht2","blk","blkrep","lambda"), n.iter=2000)
+```
+
+**Part c**  
+
+approximate 95% central posterior credible interval for this factor:
+
+```{r}
+factor = matrix(c(exp(sm3[[2]][1,1]),exp(sm3[[2]][1,5])),nrow = 1, ncol = 2, byrow = TRUE)
+dimnames(factor) = list( 
+   c("Factor"),      
+   c("2.5%", "97.5%")) 
+factor
+```
+
+**As the inverval carries positive values for the mean rate of blocking shots, greater height seems to be associated with greater rate of blocking shots**  
+
+
+**Part d**  
+
+```{r}
+blk <- as.matrix(x3_1)[, paste("blk[",1:nrow(illini),"]", sep="")]
+blkrep <- as.matrix(x3_1)[, paste("blkrep[",1:nrow(illini),"]", sep="")]
+lambdas <- as.matrix(x3_1)[, paste("lambda[",1:nrow(illini),"]", sep="")]
+
+Tchi_blk <- numeric(nrow(blkrep))
+Tchirep_blk <- numeric(nrow(blkrep))
+for(s in 1:nrow(blkrep)){
+ Tchi_blk[s] <- sum((illini$BLK - lambdas[s,])^2 / lambdas[s,])
+ Tchirep_blk[s] <- sum((blkrep[s,] - lambdas[s,])^2 / lambdas[s,])
+}
+
+mean(Tchirep_blk >= Tchi_blk)
+```
+
+**The posterior predictive p-value is suspiciously small.This could alternatively be an indicator of outliers.We conclude that there could be a bit of overdispersion**  
+
+**Part e**  
+
+**i**  
+
+```{r warning=FALSE}
+prob2 = rep(0,15)
+for(i in 1:nrow(illini)){
+  
+ prob2[i] =  mean(blkrep[,i] >= illini$BLK[i])
+ #prob2[i] =  mean(blkrep[,i] >= blk[,i]) #implies same prob calculation.
+ 
+}
+ (players = data.frame(illini$Player,prob2, illini$MIN, illini$BLK))
+```
+
+
+**ii**  
+
+**Players with prov < 0.05:**    
+```{r}
+subset(players, players$prob2 < 0.05)
+```
+
+**iii**
+
+**Players with prob = 1:**  
+```{r}
+subset(players, players$prob2 == 1)
+```
+
+
+**With the height and position relation in place, it is not surprising that a player would block lesser shots if he plays for short duration in the field. For such players who have the probability = 1, all have played for shorter time in the field and have blocked zero shots, as expected from the model**  
+
+
+
+
+
+
+
+
+

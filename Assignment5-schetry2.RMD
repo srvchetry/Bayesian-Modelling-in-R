@@ -1,0 +1,344 @@
+---
+title: "Assignment5"
+author: "Saurav Prem Kaushik Chetry"
+date: "November 20, 2019"
+output:
+  html_document: default
+  pdf_document: default
+netid: schetry2@illinois.edu
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 1, digits = 3)
+library(rjags)
+library(lattice)
+library(MASS)
+library(knitr)
+```
+
+**Solution a**  
+
+```{r warning=TRUE}
+ozone = read.csv("ozoneAQIaug.csv", header = TRUE, row.names = 1)
+
+betahat <- matrix(NA, nrow(ozone), 2)
+for(j in 1:nrow(ozone))
+  betahat[j,] <- lsfit(rbind(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31) - mean(c(1:31)), t(log(ozone[j,])))$coef
+
+#betahat
+
+
+```
+**a.i**  
+
+a scatterplot of the pairs:  
+
+```{r}
+plot(betahat)
+```
+
+**a.ii**  
+
+the average (sample mean) of Betahat1(j) & Betahat2(j) respectively are:  
+
+```{r}
+apply(betahat, 2, mean)
+```
+
+**a.iii**  
+
+the sample variance of Betahat1(j) & Betahat2(j) respectively are:  
+
+```{r}
+var(betahat[,1])
+var(betahat[,2])
+```
+
+**a.iv**  
+
+the sample correlation between Betahat1(j) & Betahat2(j):  
+
+```{r}
+cor(betahat[,1],betahat[,2])
+```
+
+
+**Solution b**
+
+**b.i**  
+
+#JAGS model aqi1.bug
+```{r eval=FALSE}
+
+data {
+dimY <- dim(logaqi)
+daycent <- day - mean(day)
+}
+model {
+for (j in 1:dimY[1]) {
+for (i in 1:dimY[2]) {
+logaqi[j,i] ~ dnorm(beta[1,j] + beta[2,j]*daycent[i], sigmasqyinv)
+}
+beta[1:2,j] ~ dmnorm(mubeta, Sigmabetainv)
+}
+mubeta ~ dmnorm(mubeta0, Sigmamubetainv)
+Sigmabetainv ~ dwish(2*Sigma0, 2)
+sigmasqyinv ~ dgamma(0.0001, 0.0001)
+Sigmabeta <- inverse(Sigmabetainv)
+rho <- Sigmabeta[1,2] / sqrt(Sigmabeta[1,1] * Sigmabeta[2,2])
+sigmasqy <- 1/sigmasqyinv
+}
+
+```
+
+```{r}
+d1 <- list(logaqi = log(ozone),
+day = c(1:31),
+mubeta0 = c(0, 0),
+Sigmamubetainv = rbind(c(0.000001, 0),
+c(0, 0.000001)),
+Sigma0 = rbind(c(0.1, 0),
+              c(0, 0.001)))
+```
+
+```{r}
+inits1 <- list(list(sigmasqyinv = 10, mubeta = c(1000, 1000),
+Sigmabetainv = rbind(c(0.1, 0),
+c(0, 1))),
+list(sigmasqyinv = 0.001, mubeta = c(-1000, 1000),
+Sigmabetainv = rbind(c(0.1, 0),
+c(0, 1))),
+list(sigmasqyinv = 10, mubeta = c(1000, -1000),
+Sigmabetainv = rbind(c(0.000001, 0),
+c(0, 0.00001))),
+list(sigmasqyinv = 0.001, mubeta = c(-1000, -1000),
+Sigmabetainv = rbind(c(0.000001, 0),
+c(0, 0.00001))))
+```
+
+```{r}
+m1 <- jags.model("aqi1.bug", d1, inits1, n.chains=4, n.adapt=1000)
+```
+```{r}
+update(m1, 8000) # burn-in
+```
+```{r}
+x1 <- coda.samples(m1, c("mubeta","Sigmabeta","sigmasqy"), n.iter=2000)
+```
+```{r}
+gelman.diag(x1, autoburnin=FALSE, multivariate=FALSE)
+```
+```{r}
+x1 <- coda.samples(m1, c("beta","mubeta","Sigmabeta","sigmasqy","rho"),n.iter=2000)
+```
+
+
+
+```{r}
+effectiveSize(x1[,c("mubeta[1]","mubeta[2]","Sigmabeta[1,1]","Sigmabeta[1,2]","Sigmabeta[2,2]","sigmasqy","rho")])
+```
+
+**b.ii**  
+the coda summary of the results for the monitored parameters:  
+
+```{r}
+(sm = summary(x1[,c("mubeta[1]","mubeta[2]","Sigmabeta[1,1]","Sigmabeta[1,2]","Sigmabeta[2,2]","sigmasqy","rho")]))
+```
+
+**b.iii**
+
+95% posterior credible interval for $\rho$: (`r sm[[2]][7,1]`, `r sm[[2]][7,5]`) 
+
+a graph of its (estimated) posterior density:  
+
+```{r}
+
+densplot(x1[,c("rho")])
+
+
+```
+
+**b.iv**  
+
+Posterior probability that $\rho$ > 0:  
+
+```{r}
+post.samp <- as.matrix(x1)
+mean(post.samp[,"rho"]> 0)
+```
+
+Bayes Factor( favouring $\rho$ > 0) with prior odds = 1:   
+```{r}
+mean(post.samp[,"rho"] > 0)/ mean(post.samp[,"rho"] < 0)
+
+```
+
+Data Evidence for favouring $\rho$ > 0 is barely mentionable.
+
+
+**b.v**  
+
+```{r}
+AQICF_1 = matrix(c(exp(30*sm[[2]][2,1]),exp(30*sm[[2]][2,5])),nrow = 1, ncol = 2, byrow = TRUE)
+dimnames(AQICF_1) = list( 
+   c("Old AQICF"),      
+   c("2.5%", "97.5%")) 
+AQICF_1
+```
+
+
+95% posterior credible interval for given AQI change factor: (`r exp(30*sm[[2]][2,1])`, `r exp(30*sm[[2]][2,5])`)
+
+**b.vi**  
+
+```{r}
+dic.samples(m1,100000)
+```
+
+Effective number of parameters("penalty"): about 28  
+Plummer's DIC ("Penalized deviance"): 476
+
+
+**Solution: C**
+
+**c.i**
+
+DAG:  
+
+```{r out.width = '100%'}
+knitr::include_graphics("DAG.jpg")
+```
+
+
+**c.ii**
+
+#JAGS model 2 aqi2.bug
+
+```{r eval= FALSE}
+
+data {
+dimY <- dim(logaqi)
+daycent <- day - mean(day)
+}
+model {
+for (j in 1:dimY[1]) {
+for (i in 1:dimY[2]) {
+logaqi[j,i] ~ dnorm(beta[1,j] + beta[2,j]*daycent[i], sigmasqyinv)
+}
+
+beta[1,j] ~ dnorm(mubeta1, sigmabeta1inv)
+beta[2,j] ~ dnorm(mubeta2, sigmabeta2inv)
+}
+
+mubeta1 ~ dnorm(0, 0.000001)
+mubeta2 ~ dnorm(0, 0.000001)
+
+sigmabeta1inv ~ dunif(0, 1000)
+sigmabeta2inv ~ dunif(0, 1000)
+
+sigmasqyinv ~ dgamma(0.0001, 0.0001)
+
+sigmabeta1 <- inverse(sigmabeta1inv)
+sigmabeta2 <- inverse(sigmabeta2inv)
+
+
+sigmasqy <- 1/sigmasqyinv
+sigmasqbeta1 <- sigmabeta1^2
+sigmasqbeta2 <- sigmabeta2^2
+
+}
+
+```
+
+
+
+```{r}
+d2 <- list(logaqi = log(ozone),
+day = c(1:31))
+```
+
+```{r}
+inits2 = list(list(mubeta1= 1000000, mubeta2 = 1000000, sigmabeta1inv = 0.00001, sigmabeta2inv = 0.00001, sigmasqyinv = 1), 
+              list(mubeta1= 0.1, mubeta2 = 0.1, sigmabeta1inv = 10, sigmabeta2inv = 10, sigmasqyinv = 10000000), 
+              list(mubeta1= 0.1, mubeta2 = 1000000, sigmabeta1inv = 10, sigmabeta2inv = 0.00001, sigmasqyinv = 10000000), 
+              list(mubeta1= 1000000, mubeta2 = 0.1, sigmabeta1inv = 0.00001, sigmabeta2inv= 10, sigmasqyinv = 1)) 
+          
+```
+
+```{r}
+m2 <- jags.model("aqi2.bug", d2, inits2, n.chains=4, n.adapt=1000)
+
+```
+
+```{r}
+update(m2, 4000) # burn-in
+```
+
+```{r}
+x2 <- coda.samples(m2, c("mubeta1","mubeta2","sigmasqy","sigmasqbeta1","sigmasqbeta2"), n.iter=4000)
+```
+
+```{r}
+gelman.diag(x2, autoburnin=FALSE, multivariate=FALSE)
+
+```
+
+```{r}
+effectiveSize(x2[,c("mubeta1","mubeta2","sigmasqy","sigmasqbeta1","sigmasqbeta2")])
+```
+
+**c.iii**  
+
+```{r}
+(sm2 = summary(x2[,c("mubeta1","mubeta2","sigmasqy","sigmasqbeta1","sigmasqbeta2")]))
+```
+
+**c.iv**    
+
+Previous 95% posterior credible interval for given AQI change factor (AQICF): (`r exp(30*sm[[2]][2,1])`, `r exp(30*sm[[2]][2,5])`)
+Current 95% posterior credible interval for given AQI change factor (AQICF): (`r exp(30*sm2[[2]][2,1])`, `r exp(30*sm2[[2]][2,5])`)
+
+```{r}
+AQICF = matrix(c(exp(30*sm[[2]][2,1]),exp(30*sm[[2]][2,5]),exp(30*sm2[[2]][2,1]),exp(30*sm2[[2]][2,5])),nrow = 2, ncol = 2, byrow = TRUE)
+dimnames(AQICF) = list( 
+   c("Old AQICF", "New AQICF"),      
+   c("2.5%", "97.5%")) 
+AQICF 
+```
+
+The previous and current values are slightly different but overall comparable.
+
+**c.v**  
+
+```{r}
+dic.samples(m2,100000)
+```
+
+Effective number of parameters("penalty"): about 30   
+Plummer's DIC ("Penalized deviance"): 480  
+
+**c.vi**  
+
+Previous DIC is better with lesser value.  
+
+
+**Solution d**
+
+**d.i**  
+
+Ozone pollution can be city specific. Pollution sources like industrial emissions, vehicular emissions combined with the higher temperature can increase the ground level ozone pollutions. These predictors are not included in the current model and can be used to modify the model. 
+
+More hyperparameters which take into account these environmental and regional predictors can be used to model the heirarchical model.
+
+**d.ii**  
+
+For the time-series correlations(not captured by the model), the variable i is involved. This would indicate the assumption about statistical independence(iid) of the errors would be violated.
+
+**d.iii**  
+
+For the spatial correlations(not captured by the model), the variable j is involved. This would indicate the assumption about constant variance of the model would be violated.
+
+
+
+
